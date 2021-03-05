@@ -7,6 +7,8 @@ set(LOX_SRX_DIR "${PROJECT_SOURCE_DIR}/src")
 
 set(lox_lib_SRC
   ${LOX_SRX_DIR}/chunk.cpp
+  ${LOX_SRX_DIR}/memory.cpp
+  ${LOX_SRX_DIR}/debug.cpp
 )
 
 add_library(lox_lib ${lox_lib_SRC})
