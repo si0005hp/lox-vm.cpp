@@ -9,6 +9,9 @@ set(lox_lib_SRC
   ${LOX_SRX_DIR}/chunk.cpp
   ${LOX_SRX_DIR}/memory.cpp
   ${LOX_SRX_DIR}/debug.cpp
+  ${LOX_SRX_DIR}/vm.cpp
+  ${LOX_SRX_DIR}/compiler.cpp
+  ${LOX_SRX_DIR}/scanner.cpp
 )
 
 add_library(lox_lib ${lox_lib_SRC})

@@ -4,6 +4,8 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#define DEBUG_TRACE_EXECUTION
+
 namespace lox
 {
 
