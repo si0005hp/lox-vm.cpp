@@ -16,8 +16,21 @@ InterpretResult VM::interpret(Chunk *chunk)
 
 InterpretResult VM::interpret(const char *source)
 {
-    compile(source);
-    return INTERPRET_OK;
+    Chunk chunk;
+
+    if (!compile(source, &chunk))
+    {
+        chunk.free();
+        return INTERPRET_COMPILE_ERROR;
+    }
+
+    chunk_ = &chunk;
+    ip_ = chunk_->code();
+
+    InterpretResult result = run();
+
+    chunk.free();
+    return result;
 }
 
 void VM::free() {}

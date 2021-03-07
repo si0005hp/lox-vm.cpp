@@ -71,31 +71,16 @@ static void runFile(const char *path)
 
 int main(int argc, char const *argv[])
 {
-    Chunk chunk;
+    if (argc == 1)
+        repl();
+    else if (argc == 2)
+        runFile(argv[1]);
+    else
+    {
+        fprintf(stderr, "Usage: clox [path]\n");
+        exit(64);
+    }
 
-    int constant = chunk.addConstant(1.2);
-    chunk.write(OP_CONSTANT, 123);
-    chunk.write(constant, 123);
-
-    constant = chunk.addConstant(3.4);
-    chunk.write(OP_CONSTANT, 123);
-    chunk.write(constant, 123);
-
-    chunk.write(OP_ADD, 123);
-
-    constant = chunk.addConstant(5.6);
-    chunk.write(OP_CONSTANT, 123);
-    chunk.write(constant, 123);
-
-    chunk.write(OP_DIVIDE, 123);
-
-    chunk.write(OP_NEGATE, 123);
-    chunk.write(OP_RETURN, 123);
-
-    disassembleChunk(&chunk, "test chunk");
-
-    vm.interpret(&chunk);
     vm.free();
-    chunk.free();
     return 0;
 }
