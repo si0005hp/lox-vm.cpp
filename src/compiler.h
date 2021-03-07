@@ -6,6 +6,7 @@
 #include "common.h"
 #include "compiler.h"
 #include "scanner.h"
+#include "value.h"
 
 namespace lox
 {

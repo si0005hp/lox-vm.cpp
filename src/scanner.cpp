@@ -23,6 +23,9 @@ Token Scanner::scanToken()
     if (isAtEnd()) return makeToken(TOKEN_EOF);
 
     char c = advance();
+
+    if (isAlpha(c)) return identifier();
+
     if (isDigit(c)) return number();
 
     switch (c)
@@ -111,7 +114,6 @@ TokenType Scanner::identifierType()
         case 'c': return checkKeyword(1, 4, "lass", TOKEN_CLASS);
         case 'e': return checkKeyword(1, 3, "lse", TOKEN_ELSE);
         case 'f':
-        {
             if (current_ - start_ > 1)
             {
                 switch (start_[1])
@@ -121,7 +123,7 @@ TokenType Scanner::identifierType()
                     case 'u': return checkKeyword(2, 1, "n", TOKEN_FUN);
                 }
             }
-        }
+            break;
         case 'i': return checkKeyword(1, 1, "f", TOKEN_IF);
         case 'n': return checkKeyword(1, 2, "il", TOKEN_NIL);
         case 'o': return checkKeyword(1, 1, "r", TOKEN_OR);
@@ -129,7 +131,6 @@ TokenType Scanner::identifierType()
         case 'r': return checkKeyword(1, 5, "eturn", TOKEN_RETURN);
         case 's': return checkKeyword(1, 4, "uper", TOKEN_SUPER);
         case 't':
-        {
             if (current_ - start_ > 1)
             {
                 switch (start_[1])
@@ -138,7 +139,7 @@ TokenType Scanner::identifierType()
                     case 'r': return checkKeyword(2, 2, "ue", TOKEN_TRUE);
                 }
             }
-        }
+            break;
         case 'v': return checkKeyword(1, 2, "ar", TOKEN_VAR);
         case 'w': return checkKeyword(1, 4, "hile", TOKEN_WHILE);
     }

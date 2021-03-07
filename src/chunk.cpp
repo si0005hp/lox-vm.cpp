@@ -1,6 +1,7 @@
 #include "chunk.h"
 
 #include "memory.h"
+#include "value.h"
 
 namespace lox
 {
