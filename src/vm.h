@@ -45,6 +45,7 @@ class VM
     Value stack_[STACK_MAX];
     Value *stackTop_;
     Table strings_; // intern
+    Table globals_; // global variables
 
     Obj *objects_;
 };

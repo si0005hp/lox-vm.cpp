@@ -54,7 +54,7 @@ bool Table::get(ObjString* key, Value* value)
     return true;
 }
 
-bool Table::delete_(Table* table, ObjString* key)
+bool Table::delete_(ObjString* key)
 {
     if (count == 0) return false;
 

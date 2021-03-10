@@ -19,7 +19,7 @@ struct Table
     void free();
     bool set(ObjString* key, Value value);
     bool get(ObjString* key, Value* value);
-    bool delete_(Table* table, ObjString* key);
+    bool delete_(ObjString* key);
 
     Entry* findEntry(Entry* entries, int capacity, ObjString* key);
     void adjustCapacity(int capacity);

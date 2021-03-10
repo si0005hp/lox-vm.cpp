@@ -26,7 +26,7 @@ typedef enum
     PREC_PRIMARY
 } Precedence;
 
-typedef void (*ParseFn)();
+typedef void (*ParseFn)(bool canAssign);
 
 struct ParseRule
 {
@@ -44,6 +44,9 @@ class Parser
     void errorAtCurrent(const char* message);
     void errorAt(Token* token, const char* message);
     void consume(TokenType type, const char* message);
+    bool match(TokenType type);
+    bool check(TokenType type);
+    void synchronize();
 
     void clearError();
 

@@ -14,6 +14,7 @@ namespace lox
 VM::VM() : stackTop_(stack_), objects_(NULL)
 {
     strings_.init();
+    globals_.init();
 }
 
 void VM::resetStack()
@@ -50,6 +51,7 @@ InterpretResult VM::interpret(const char *source)
 void VM::free()
 {
     strings_.free();
+    globals_.free();
     freeObjects();
 }
 
@@ -57,6 +59,7 @@ InterpretResult VM::run()
 {
 #define READ_BYTE() (*ip_++)
 #define READ_CONSTANT() (chunk_->constants().elems()[READ_BYTE()])
+#define READ_STRING() AS_STRING(READ_CONSTANT())
 
 #define BINARY_OP(valueType, op)                        \
     do {                                                \
@@ -133,9 +136,45 @@ InterpretResult VM::run()
                 }
                 push(NUMBER_VAL(-AS_NUMBER(pop())));
                 break;
-            case OP_RETURN:
+
+            case OP_PRINT:
                 printValue(pop());
                 std::cout << std::endl;
+                break;
+            case OP_POP: pop(); break;
+            case OP_GET_GLOBAL:
+            {
+                ObjString *name = READ_STRING();
+                Value value;
+                if (!globals_.get(name, &value))
+                {
+                    runtimeError("Undefined variable '%s'.", name->chars);
+                    return INTERPRET_RUNTIME_ERROR;
+                }
+                push(value);
+                break;
+            }
+            case OP_SET_GLOBAL:
+            {
+                ObjString *name = READ_STRING();
+                if (vm.globals_.set(name, peek(0)))
+                {
+                    vm.globals_.delete_(name);
+                    runtimeError("Undefined variable '%s'.", name->chars);
+                    return INTERPRET_RUNTIME_ERROR;
+                }
+                break;
+            }
+            case OP_DEFINE_GLOBAL:
+            {
+                ObjString *name = READ_STRING();
+                globals_.set(name, peek(0));
+                pop();
+                break;
+            }
+            case OP_RETURN:
+                // printValue(pop());
+                // std::cout << std::endl;
                 return INTERPRET_OK;
         }
     }
@@ -143,6 +182,7 @@ InterpretResult VM::run()
 #undef READ_BYTE
 #undef READ_CONSTANT
 #undef BINARY_OP
+#undef READ_STRING
 }
 
 bool VM::isFalsey(Value value) const
