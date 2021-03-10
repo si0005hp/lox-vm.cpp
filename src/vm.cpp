@@ -11,6 +11,11 @@
 namespace lox
 {
 
+VM::VM() : stackTop_(stack_), objects_(NULL)
+{
+    strings_.init();
+}
+
 void VM::resetStack()
 {
     stackTop_ = stack_;
@@ -44,6 +49,7 @@ InterpretResult VM::interpret(const char *source)
 
 void VM::free()
 {
+    strings_.free();
     freeObjects();
 }
 

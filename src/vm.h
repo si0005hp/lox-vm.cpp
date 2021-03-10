@@ -1,6 +1,7 @@
 #pragma once
 
 #include "chunk.h"
+#include "table.h"
 #include "value.h"
 
 #define STACK_MAX 256
@@ -18,7 +19,7 @@ typedef enum
 class VM
 {
   public:
-    VM() : stackTop_(stack_), objects_(NULL) {}
+    VM();
 
     void resetStack();
     InterpretResult interpret(Chunk *chunk);
@@ -34,6 +35,7 @@ class VM
 
     Obj *objects() const { return objects_; }
     void setObjects(Obj *objects) { objects = objects_; }
+    Table *strings() { return &strings_; }
 
   private:
     InterpretResult run();
@@ -42,6 +44,7 @@ class VM
     const uint8_t *ip_;
     Value stack_[STACK_MAX];
     Value *stackTop_;
+    Table strings_; // intern
 
     Obj *objects_;
 };

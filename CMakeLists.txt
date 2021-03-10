@@ -14,6 +14,7 @@ set(lox_lib_SRC
   ${LOX_SRX_DIR}/scanner.cpp
   ${LOX_SRX_DIR}/value.cpp
   ${LOX_SRX_DIR}/object.cpp
+  ${LOX_SRX_DIR}/table.cpp
 )
 
 add_library(lox_lib ${lox_lib_SRC})
