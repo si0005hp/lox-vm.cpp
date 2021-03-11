@@ -1,5 +1,7 @@
 #include "compiler.h"
 
+#include <string.h>
+
 #include <unordered_map>
 
 #include "object.h"
@@ -8,6 +10,8 @@
 #ifdef DEBUG_PRINT_CODE
 #include "debug.h"
 #endif
+
+#define LOCAL_DECLARE_UNINITIALIZED -1
 
 namespace lox
 {
@@ -64,6 +68,11 @@ void Parser::consume(TokenType type, const char* message)
     errorAtCurrent(message);
 }
 
+static void error(const char* message)
+{
+    parser.errorAt(&parser.previous(), message);
+}
+
 bool Parser::match(TokenType type)
 {
     if (!check(type)) return false;
@@ -104,6 +113,8 @@ void Parser::synchronize()
 
 /* code gen */
 
+Compiler* current = NULL;
+
 Chunk* compilingChunk;
 
 static Chunk* currentChunk()
@@ -122,6 +133,52 @@ static void emitBytes(uint8_t byte1, uint8_t byte2)
     emitByte(byte2);
 }
 
+static bool identifiersEqual(const Token& a, const Token& b)
+{
+    if (a.length != b.length) return false;
+    return memcmp(a.start, b.start, a.length) == 0;
+}
+
+void Compiler::init()
+{
+    localCount_ = 0;
+    scopeDepth_ = 0;
+    current = this;
+}
+
+void Compiler::beginScope()
+{
+    scopeDepth_++;
+}
+
+void Compiler::endScope()
+{
+    scopeDepth_--;
+
+    while (current->localCount_ > 0 &&
+           current->locals_[current->localCount_ - 1].depth >
+             current->scopeDepth_)
+    {
+        emitByte(OP_POP); // This can be optimized as OP_POPN stuff.
+        current->localCount_--;
+    }
+}
+
+int Compiler::resolveLocal(const Token& name)
+{
+    for (int i = localCount_ - 1; i >= 0; i--)
+    {
+        Local* local = &locals_[i];
+        if (identifiersEqual(name, local->name))
+        {
+            if (local->depth == LOCAL_DECLARE_UNINITIALIZED)
+                error("Can't read local variable in its own initializer.");
+            return i;
+        }
+    }
+    return -1;
+}
+
 static void emitReturn()
 {
     emitByte(OP_RETURN);
@@ -133,11 +190,6 @@ static void endCompiler()
 #ifdef DEBUG_PRINT_CODE
     if (!parser.hadError()) { disassembleChunk(currentChunk(), "code"); }
 #endif
-}
-
-static void error(const char* message)
-{
-    parser.errorAt(&parser.previous(), message);
 }
 
 static uint8_t makeConstant(Value value)
@@ -161,7 +213,6 @@ static void emitConstant(Value value)
 static ParseRule* getRule(TokenType type);
 static void parsePrecedence(Precedence precedence);
 static void expression();
-
 static void variable(bool canAssign);
 static void binary(bool canAssign);
 static void literal(bool canAssign);
@@ -169,11 +220,6 @@ static void grouping(bool canAssign);
 static void number(bool canAssign);
 static void string(bool canAssign);
 static void unary(bool canAssign);
-
-static void statement();
-static void declaration();
-static void expressionStatement();
-static void varDeclaration();
 
 static std::unordered_map<int, ParseRule> rules = {
   {TOKEN_LEFT_PAREN, {grouping, NULL, PREC_NONE}},
@@ -252,29 +298,88 @@ static uint8_t identifierConstant(const Token& name)
     return makeConstant(OBJ_VAL(copyString(name.start, name.length)));
 }
 
+static void addLocal(const Token& name)
+{
+    if (current->localCount_ == UINT8_COUNT)
+    {
+        error("Too many local variables in function.");
+        return;
+    }
+
+    Local* local = &current->locals_[current->localCount_++];
+    local->name = name;
+    local->depth = LOCAL_DECLARE_UNINITIALIZED;
+}
+
+static void declareVariable()
+{
+    if (current->scopeDepth_ == 0) return;
+
+    Token& name = parser.previous();
+
+    for (int i = current->localCount_ - 1; i >= 0; i--)
+    {
+        Local* local = &current->locals_[i];
+        if (local->depth != -1 && local->depth < current->scopeDepth_) break;
+
+        if (identifiersEqual(name, local->name))
+            error("Already variable with this name in this scope.");
+    }
+
+    addLocal(name);
+}
+
 static uint8_t parseVariable(const char* errorMessage)
 {
     parser.consume(TOKEN_IDENTIFIER, errorMessage);
+
+    declareVariable();
+    if (current->scopeDepth_ > 0)
+        return 0; // In local var, return a dummy table index
+
     return identifierConstant(parser.previous());
+}
+
+static void markInitialized()
+{
+    current->locals_[current->localCount_ - 1].depth = current->scopeDepth_;
 }
 
 static void defineVariable(uint8_t global)
 {
+    if (current->scopeDepth_ > 0)
+    {
+        markInitialized();
+        return;
+    }
+
     emitBytes(OP_DEFINE_GLOBAL, global);
 }
 
 static void namedVariable(const Token& name, bool canAssign)
 {
-    uint8_t arg = identifierConstant(name);
+    uint8_t getOp, setOp;
+    int arg = current->resolveLocal(name);
+    if (arg != -1)
+    {
+        getOp = OP_GET_LOCAL;
+        setOp = OP_SET_LOCAL;
+    }
+    else
+    {
+        arg = identifierConstant(name);
+        getOp = OP_GET_GLOBAL;
+        setOp = OP_SET_GLOBAL;
+    }
 
     if (canAssign && parser.match(TOKEN_EQUAL))
     {
         expression();
-        emitBytes(OP_SET_GLOBAL, arg);
+        emitBytes(setOp, (uint8_t)arg);
     }
     else
     {
-        emitBytes(OP_GET_GLOBAL, arg);
+        emitBytes(getOp, (uint8_t)arg);
     }
 }
 
@@ -362,15 +467,12 @@ static void binary(bool canAssign)
 
 /* statements */
 
-static void declaration()
-{
-    if (parser.match(TOKEN_VAR))
-        varDeclaration();
-    else
-        statement();
-
-    if (parser.panicMode()) parser.synchronize();
-}
+static void varDeclaration();
+static void printStatement();
+static void expressionStatement();
+static void block();
+static void statement();
+static void declaration();
 
 static void varDeclaration()
 {
@@ -404,13 +506,41 @@ static void statement()
 {
     if (parser.match(TOKEN_PRINT))
         printStatement();
+    else if (parser.match(TOKEN_PRINT))
+    {
+        current->beginScope();
+        block();
+        current->endScope();
+    }
     else
         expressionStatement();
+}
+
+static void declaration()
+{
+    if (parser.match(TOKEN_VAR))
+        varDeclaration();
+    else
+        statement();
+
+    if (parser.panicMode()) parser.synchronize();
+}
+
+static void block()
+{
+    while (!parser.check(TOKEN_RIGHT_BRACE) && !parser.check(TOKEN_EOF))
+        declaration();
+
+    parser.consume(TOKEN_RIGHT_BRACE, "Expect '}' after block.");
 }
 
 bool compile(const char* source, Chunk* chunk)
 {
     scanner.init(source);
+
+    Compiler compiler;
+    compiler.init();
+
     compilingChunk = chunk;
 
     parser.clearError();

@@ -35,6 +35,27 @@ struct ParseRule
     Precedence precedence;
 };
 
+struct Local
+{
+    Token name;
+    int depth;
+};
+
+class Compiler
+{
+  public:
+    Compiler() : localCount_(0), scopeDepth_(0) {}
+    void init();
+
+    void beginScope();
+    void endScope();
+    int resolveLocal(const Token& name);
+
+    Local locals_[UINT8_COUNT];
+    int localCount_;
+    int scopeDepth_;
+};
+
 bool compile(const char* source, Chunk* chunk);
 
 class Parser

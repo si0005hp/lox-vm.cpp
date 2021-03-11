@@ -24,6 +24,13 @@ static int constantInstruction(const char* name, Chunk* chunk, int offset)
     return offset + 2;
 }
 
+static int byteInstruction(const char* name, Chunk* chunk, int offset)
+{
+    uint8_t slot = chunk->code()[offset + 1];
+    printf("%-16s %4d\n", name, slot);
+    return offset + 2;
+}
+
 void disassembleChunk(Chunk* chunk, const char* name)
 {
     std::cout << "== " << name << " ==" << std::endl;
@@ -68,6 +75,10 @@ int disassembleInstruction(Chunk* chunk, int offset)
         case OP_SET_GLOBAL:
             return constantInstruction("OP_SET_GLOBAL", chunk, offset);
         case OP_RETURN: return simpleInstruction("OP_RETURN", offset);
+        case OP_GET_LOCAL:
+            return byteInstruction("OP_GET_LOCAL", chunk, offset);
+        case OP_SET_LOCAL:
+            return byteInstruction("OP_SET_LOCAL", chunk, offset);
         default:
             std::cout << "Unknown opcode " << instruction << std::endl;
             return offset + 1;
