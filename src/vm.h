@@ -1,10 +1,12 @@
 #pragma once
 
 #include "chunk.h"
+#include "object.h"
 #include "table.h"
 #include "value.h"
 
-#define STACK_MAX 256
+#define FRAMES_MAX 64
+#define STACK_MAX (FRAMES_MAX * UINT8_COUNT)
 
 namespace lox
 {
@@ -15,6 +17,13 @@ typedef enum
     INTERPRET_COMPILE_ERROR,
     INTERPRET_RUNTIME_ERROR
 } InterpretResult;
+
+struct CallFrame
+{
+    ObjFunction *function;
+    uint8_t *ip;
+    Value *slots;
+};
 
 class VM
 {
@@ -30,8 +39,11 @@ class VM
     Value pop();
     Value peek(int distance) const;
     void concatenate();
+    bool callValue(Value callee, int argCount);
+    bool call(ObjFunction *function, int argCount);
 
     void runtimeError(const char *format, ...);
+    void defineNative(const char *name, NativeFn function);
 
     Obj *objects() const { return objects_; }
     void setObjects(Obj *objects) { objects = objects_; }
@@ -40,8 +52,8 @@ class VM
   private:
     InterpretResult run();
 
-    Chunk *chunk_;
-    const uint8_t *ip_;
+    CallFrame frames_[FRAMES_MAX];
+    int frameCount_;
     Value stack_[STACK_MAX];
     Value *stackTop_;
     Table strings_; // intern

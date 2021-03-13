@@ -119,7 +119,7 @@ Chunk* compilingChunk;
 
 static Chunk* currentChunk()
 {
-    return compilingChunk;
+    return &current->function_->chunk;
 }
 
 static void emitByte(uint8_t byte)
@@ -139,11 +139,24 @@ static bool identifiersEqual(const Token& a, const Token& b)
     return memcmp(a.start, b.start, a.length) == 0;
 }
 
-void Compiler::init()
+void Compiler::init(FunctionType type)
 {
+    enclosing_ = current;
+    function_ = NULL;
+    type_ = type;
     localCount_ = 0;
     scopeDepth_ = 0;
+    function_ = newFunction();
     current = this;
+
+    if (type != TYPE_SCRIPT)
+        current->function_->name =
+          copyString(parser.previous().start, parser.previous().length);
+
+    Local* local = &locals_[localCount_++];
+    local->depth = 0;
+    local->name.start = "";
+    local->name.length = 0;
 }
 
 void Compiler::beginScope()
@@ -181,15 +194,26 @@ int Compiler::resolveLocal(const Token& name)
 
 static void emitReturn()
 {
+    emitByte(OP_NIL);
     emitByte(OP_RETURN);
 }
 
-static void endCompiler()
+static ObjFunction* endCompiler()
 {
     emitReturn();
+    ObjFunction* function = current->function_;
+
 #ifdef DEBUG_PRINT_CODE
-    if (!parser.hadError()) { disassembleChunk(currentChunk(), "code"); }
+    if (!parser.hadError())
+    {
+        disassembleChunk(currentChunk(), function->name != NULL
+                                           ? function->name->chars
+                                           : "<script>");
+    }
 #endif
+
+    current = current->enclosing_;
+    return function;
 }
 
 static uint8_t makeConstant(Value value)
@@ -251,9 +275,10 @@ static void string(bool canAssign);
 static void unary(bool canAssign);
 static void and_(bool canAssign);
 static void or_(bool canAssign);
+static void call(bool canAssign);
 
 static std::unordered_map<int, ParseRule> rules = {
-  {TOKEN_LEFT_PAREN, {grouping, NULL, PREC_NONE}},
+  {TOKEN_LEFT_PAREN, {grouping, call, PREC_CALL}},
   {TOKEN_RIGHT_PAREN, {NULL, NULL, PREC_NONE}},
   {TOKEN_LEFT_BRACE, {NULL, NULL, PREC_NONE}},
   {TOKEN_RIGHT_BRACE, {NULL, NULL, PREC_NONE}},
@@ -373,6 +398,8 @@ static uint8_t parseVariable(const char* errorMessage)
 
 static void markInitialized()
 {
+    if (current->scopeDepth_ == 0) return;
+
     current->locals_[current->localCount_ - 1].depth = current->scopeDepth_;
 }
 
@@ -414,7 +441,30 @@ static void namedVariable(const Token& name, bool canAssign)
     }
 }
 
+static uint8_t argumentList()
+{
+    uint8_t argCount = 0;
+    if (!parser.check(TOKEN_RIGHT_PAREN))
+    {
+        do {
+            expression();
+            if (argCount == 255) error("Can't have more than 255 arguments.");
+
+            argCount++;
+        } while (parser.match(TOKEN_COMMA));
+    }
+
+    parser.consume(TOKEN_RIGHT_PAREN, "Expect ')' after arguments.");
+    return argCount;
+}
+
 /* expressions */
+static void call(bool canAssign)
+{
+    uint8_t argCount = argumentList();
+    emitBytes(OP_CALL, argCount);
+}
+
 static void variable(bool canAssign)
 {
     namedVariable(parser.previous(), canAssign);
@@ -652,6 +702,23 @@ static void forStatement()
     current->endScope();
 }
 
+static void returnStatement()
+{
+    if (current->type_ == TYPE_SCRIPT)
+    {
+        error("Can't return from top-level code.");
+    }
+
+    if (parser.match(TOKEN_SEMICOLON))
+        emitReturn();
+    else
+    {
+        expression();
+        parser.consume(TOKEN_SEMICOLON, "Expect ';' after return value.");
+        emitByte(OP_RETURN);
+    }
+}
+
 static void statement()
 {
     if (parser.match(TOKEN_PRINT))
@@ -660,6 +727,8 @@ static void statement()
         forStatement();
     else if (parser.match(TOKEN_IF))
         ifStatement();
+    else if (parser.match(TOKEN_RETURN))
+        returnStatement();
     else if (parser.match(TOKEN_WHILE))
         whileStatement();
     else if (parser.match(TOKEN_PRINT))
@@ -672,9 +741,51 @@ static void statement()
         expressionStatement();
 }
 
+static void function(FunctionType type)
+{
+    Compiler compiler;
+    compiler.init(type);
+    compiler.beginScope();
+
+    // Compile the parameter list.
+    parser.consume(TOKEN_LEFT_PAREN, "Expect '(' after function name.");
+    if (!parser.check(TOKEN_RIGHT_PAREN))
+    {
+        do {
+            current->function_->arity++;
+            if (current->function_->arity > 255)
+            {
+                parser.errorAtCurrent("Can't have more than 255 parameters.");
+            }
+
+            uint8_t paramConstant = parseVariable("Expect parameter name.");
+            defineVariable(paramConstant);
+        } while (parser.match(TOKEN_COMMA));
+    }
+    parser.consume(TOKEN_RIGHT_PAREN, "Expect ')' after parameters.");
+
+    // The body.
+    parser.consume(TOKEN_LEFT_BRACE, "Expect '{' before function body.");
+    block();
+
+    // Create the function object.
+    ObjFunction* function = endCompiler();
+    emitBytes(OP_CONSTANT, makeConstant(OBJ_VAL(function)));
+}
+
+static void funDeclaration()
+{
+    uint8_t global = parseVariable("Expect function name.");
+    markInitialized();
+    function(TYPE_FUNCTION);
+    defineVariable(global);
+}
+
 static void declaration()
 {
-    if (parser.match(TOKEN_VAR))
+    if (parser.match(TOKEN_FUN))
+        funDeclaration();
+    else if (parser.match(TOKEN_VAR))
         varDeclaration();
     else
         statement();
@@ -690,14 +801,12 @@ static void block()
     parser.consume(TOKEN_RIGHT_BRACE, "Expect '}' after block.");
 }
 
-bool compile(const char* source, Chunk* chunk)
+ObjFunction* compile(const char* source)
 {
     scanner.init(source);
 
     Compiler compiler;
-    compiler.init();
-
-    compilingChunk = chunk;
+    compiler.init(TYPE_SCRIPT);
 
     parser.clearError();
 
@@ -705,8 +814,8 @@ bool compile(const char* source, Chunk* chunk)
 
     while (!parser.match(TOKEN_EOF)) declaration();
 
-    endCompiler();
-    return !parser.hadError();
+    ObjFunction* function = endCompiler();
+    return parser.hadError() ? NULL : function;
 }
 
 } // namespace lox

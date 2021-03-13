@@ -41,22 +41,34 @@ struct Local
     int depth;
 };
 
+typedef enum
+{
+    TYPE_FUNCTION,
+    TYPE_SCRIPT
+} FunctionType;
+
 class Compiler
 {
   public:
     Compiler() : localCount_(0), scopeDepth_(0) {}
-    void init();
+    void init(FunctionType type);
 
     void beginScope();
     void endScope();
     int resolveLocal(const Token& name);
+
+    /* fields */
+    struct Compiler* enclosing_;
+
+    ObjFunction* function_;
+    FunctionType type_;
 
     Local locals_[UINT8_COUNT];
     int localCount_;
     int scopeDepth_;
 };
 
-bool compile(const char* source, Chunk* chunk);
+ObjFunction* compile(const char* source);
 
 class Parser
 {

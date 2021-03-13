@@ -32,6 +32,15 @@ static void freeObject(Obj* object)
             FREE(ObjString, object);
             break;
         }
+        case OBJ_FUNCTION:
+        {
+            ObjFunction* function = (ObjFunction*)object;
+            function->chunk.free();
+            FREE(ObjFunction, object);
+            // function’s name will be managed by GC
+            break;
+        }
+        case OBJ_NATIVE: FREE(ObjNative, object); break;
     }
 }
 
