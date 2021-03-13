@@ -58,6 +58,7 @@ void VM::free()
 InterpretResult VM::run()
 {
 #define READ_BYTE() (*ip_++)
+#define READ_SHORT() (ip_ += 2, (uint16_t)((ip_[-2] << 8) | ip_[-1]))
 #define READ_CONSTANT() (chunk_->constants().elems()[READ_BYTE()])
 #define READ_STRING() AS_STRING(READ_CONSTANT())
 
@@ -183,6 +184,24 @@ InterpretResult VM::run()
                 ObjString *name = READ_STRING();
                 globals_.set(name, peek(0));
                 pop();
+                break;
+            }
+            case OP_JUMP_IF_FALSE:
+            {
+                uint16_t offset = READ_SHORT();
+                if (isFalsey(peek(0))) ip_ += offset;
+                break;
+            }
+            case OP_JUMP:
+            {
+                uint16_t offset = READ_SHORT();
+                ip_ += offset;
+                break;
+            }
+            case OP_LOOP:
+            {
+                uint16_t offset = READ_SHORT();
+                ip_ -= offset;
                 break;
             }
             case OP_RETURN:
