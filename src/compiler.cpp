@@ -142,7 +142,7 @@ static bool identifiersEqual(const Token& a, const Token& b)
 void Compiler::init(FunctionType type)
 {
     enclosing_ = current;
-    function_ = NULL;
+    // function_ = NULL;
     type_ = type;
     localCount_ = 0;
     scopeDepth_ = 0;
@@ -155,6 +155,7 @@ void Compiler::init(FunctionType type)
 
     Local* local = &locals_[localCount_++];
     local->depth = 0;
+    local->isCaptured = false;
     local->name.start = "";
     local->name.length = 0;
 }
@@ -172,7 +173,11 @@ void Compiler::endScope()
            current->locals_[current->localCount_ - 1].depth >
              current->scopeDepth_)
     {
-        emitByte(OP_POP); // This can be optimized as OP_POPN stuff.
+        if (current->locals_[current->localCount_ - 1].isCaptured)
+            emitByte(OP_CLOSE_UPVALUE);
+        else
+            emitByte(OP_POP);
+
         current->localCount_--;
     }
 }
@@ -189,6 +194,45 @@ int Compiler::resolveLocal(const Token& name)
             return i;
         }
     }
+    return -1;
+}
+
+int Compiler::addUpvalue(uint8_t index, bool isLocal)
+{
+    int upvalueCount = function_->upvalueCount;
+
+    //  first check to see if the function already has the same upvalue
+    for (int i = 0; i < upvalueCount; i++)
+    {
+        Upvalue* upvalue = &upvalues_[i];
+        if (upvalue->index == index && upvalue->isLocal == isLocal) return i;
+    }
+
+    if (upvalueCount == UINT8_COUNT)
+    {
+        error("Too many closure variables in function.");
+        return 0;
+    }
+
+    upvalues_[upvalueCount].isLocal = isLocal;
+    upvalues_[upvalueCount].index = index;
+    return function_->upvalueCount++;
+}
+
+int Compiler::resolveUpvalue(const Token& name)
+{
+    if (enclosing_ == NULL) return -1;
+
+    int local = enclosing_->resolveLocal(name);
+    if (local != -1)
+    {
+        enclosing_->locals_[local].isCaptured = true;
+        return addUpvalue((uint8_t)local, true);
+    }
+
+    int upvalue = enclosing_->resolveUpvalue(name);
+    if (upvalue != -1) return addUpvalue((uint8_t)upvalue, false);
+
     return -1;
 }
 
@@ -365,6 +409,7 @@ static void addLocal(const Token& name)
     Local* local = &current->locals_[current->localCount_++];
     local->name = name;
     local->depth = LOCAL_DECLARE_UNINITIALIZED;
+    local->isCaptured = false;
 }
 
 static void declareVariable()
@@ -422,6 +467,11 @@ static void namedVariable(const Token& name, bool canAssign)
     {
         getOp = OP_GET_LOCAL;
         setOp = OP_SET_LOCAL;
+    }
+    else if ((arg = current->resolveUpvalue(name)) != -1)
+    {
+        getOp = OP_GET_UPVALUE;
+        setOp = OP_SET_UPVALUE;
     }
     else
     {
@@ -770,7 +820,13 @@ static void function(FunctionType type)
 
     // Create the function object.
     ObjFunction* function = endCompiler();
-    emitBytes(OP_CONSTANT, makeConstant(OBJ_VAL(function)));
+    emitBytes(OP_CLOSURE, makeConstant(OBJ_VAL(function)));
+
+    for (int i = 0; i < function->upvalueCount; i++)
+    {
+        emitByte(compiler.upvalues_[i].isLocal ? 1 : 0);
+        emitByte(compiler.upvalues_[i].index);
+    }
 }
 
 static void funDeclaration()

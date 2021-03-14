@@ -3,6 +3,7 @@
 #include <iomanip>
 #include <iostream>
 
+#include "object.h"
 #include "value.h"
 
 namespace lox
@@ -92,6 +93,31 @@ int disassembleInstruction(Chunk* chunk, int offset)
             return jumpInstruction("OP_JUMP_IF_FALSE", 1, chunk, offset);
         case OP_LOOP: return jumpInstruction("OP_LOOP", -1, chunk, offset);
         case OP_CALL: return byteInstruction("OP_CALL", chunk, offset);
+        case OP_CLOSURE:
+        {
+            offset++;
+            uint8_t constant = chunk->code()[offset++];
+            printf("%-16s %4d ", "OP_CLOSURE", constant);
+            printValue(chunk->constants().elems()[constant]);
+            printf("\n");
+
+            ObjFunction* function =
+              AS_FUNCTION(chunk->constants().elems()[constant]);
+            for (int j = 0; j < function->upvalueCount; j++)
+            {
+                int isLocal = chunk->code()[offset++];
+                int index = chunk->code()[offset++];
+                printf("%04d      |                     %s %d\n", offset - 2,
+                       isLocal ? "local" : "upvalue", index);
+            }
+            return offset;
+        }
+        case OP_GET_UPVALUE:
+            return byteInstruction("OP_GET_UPVALUE", chunk, offset);
+        case OP_SET_UPVALUE:
+            return byteInstruction("OP_SET_UPVALUE", chunk, offset);
+        case OP_CLOSE_UPVALUE:
+            return simpleInstruction("OP_CLOSE_UPVALUE", offset);
         default:
             std::cout << "Unknown opcode " << instruction << std::endl;
             return offset + 1;

@@ -40,7 +40,7 @@ static Value helloworldNative(int argCount, Value *args)
     return OBJ_VAL(takeString((char *)"Hello world!", 13));
 }
 
-VM::VM() : stackTop_(stack_), objects_(NULL)
+VM::VM() : stackTop_(stack_), objects_(NULL), openUpvalues_(NULL)
 {
     strings_.init();
     globals_.init();
@@ -55,6 +55,7 @@ void VM::resetStack()
 {
     stackTop_ = stack_;
     frameCount_ = 0;
+    openUpvalues_ = NULL;
 }
 
 InterpretResult VM::interpret(const char *source)
@@ -63,7 +64,10 @@ InterpretResult VM::interpret(const char *source)
     if (function == NULL) return INTERPRET_COMPILE_ERROR;
 
     push(OBJ_VAL(function));
-    callValue(OBJ_VAL(function), 0);
+    ObjClosure *closure = newClosure(function);
+    pop();
+    push(OBJ_VAL(closure));
+    callValue(OBJ_VAL(closure), 0);
 
     return run();
 }
@@ -86,7 +90,7 @@ InterpretResult VM::run()
 #define READ_SHORT() \
     (frame->ip += 2, (uint16_t)((frame->ip[-2] << 8) | frame->ip[-1]))
 #define READ_CONSTANT() \
-    (frame->function->chunk.constants().elems()[READ_BYTE()])
+    (frame->closure->function->chunk.constants().elems()[READ_BYTE()])
 #define READ_STRING() AS_STRING(READ_CONSTANT())
 
 #define BINARY_OP(valueType, op)                        \
@@ -101,8 +105,12 @@ InterpretResult VM::run()
         push(valueType(a op b));                        \
     } while (false)
 
+#ifdef DEBUG_TRACE_EXECUTION
+    std::cout << "********** TRACE EXECUTION **********" << std::endl;
+#endif
     for (;;)
     {
+
 #ifdef DEBUG_TRACE_EXECUTION
         std::cout << "          ";
         for (Value *slot = stack_; slot < stackTop_; slot++)
@@ -113,8 +121,8 @@ InterpretResult VM::run()
         }
         std::cout << std::endl;
         disassembleInstruction(
-          &frame->function->chunk,
-          (int)(frame->ip - frame->function->chunk.code()));
+          &frame->closure->function->chunk,
+          (int)(frame->ip - frame->closure->function->chunk.code()));
 #endif
 
         uint8_t instruction;
@@ -242,9 +250,48 @@ InterpretResult VM::run()
                 frame = &frames_[frameCount_ - 1];
                 break;
             }
+
+            case OP_CLOSURE:
+            {
+                ObjFunction *function = AS_FUNCTION(READ_CONSTANT());
+                ObjClosure *closure = newClosure(function);
+                push(OBJ_VAL(closure));
+
+                for (int i = 0; i < closure->upvalueCount; i++)
+                {
+                    uint8_t isLocal = READ_BYTE();
+                    uint8_t index = READ_BYTE();
+
+                    closure->upvalues[i] =
+                      isLocal ? captureUpvalue(frame->slots + index)
+                              : frame->closure->upvalues[index];
+                }
+                break;
+            }
+
+            case OP_GET_UPVALUE:
+            {
+                uint8_t slot = READ_BYTE();
+                push(*frame->closure->upvalues[slot]->location);
+                break;
+            }
+            case OP_SET_UPVALUE:
+            {
+                uint8_t slot = READ_BYTE();
+                *frame->closure->upvalues[slot]->location = peek(0);
+                break;
+            }
+
+            case OP_CLOSE_UPVALUE:
+                closeUpvalues(stackTop_ - 1);
+                pop();
+                break;
+
             case OP_RETURN:
             {
                 Value result = pop();
+
+                closeUpvalues(frame->slots);
 
                 frameCount_--;
                 if (frameCount_ == 0)
@@ -271,6 +318,40 @@ InterpretResult VM::run()
 #undef READ_STRING
 }
 
+void VM::closeUpvalues(Value *last)
+{
+    while (openUpvalues_ != NULL && openUpvalues_->location >= last)
+    {
+        ObjUpvalue *upvalue = openUpvalues_;
+        upvalue->closed = *upvalue->location;
+        upvalue->location = &upvalue->closed;
+        openUpvalues_ = upvalue->next;
+    }
+}
+
+ObjUpvalue *VM::captureUpvalue(Value *local)
+{
+    ObjUpvalue *prevUpvalue = NULL;
+    ObjUpvalue *upvalue = vm.openUpvalues_;
+
+    while (upvalue != NULL && upvalue->location > local)
+    {
+        prevUpvalue = upvalue;
+        upvalue = upvalue->next;
+    }
+    if (upvalue != NULL && upvalue->location == local) return upvalue;
+
+    ObjUpvalue *createdUpvalue = newUpvalue(local);
+    createdUpvalue->next = upvalue;
+
+    if (prevUpvalue == NULL)
+        openUpvalues_ = createdUpvalue;
+    else
+        prevUpvalue->next = createdUpvalue;
+
+    return createdUpvalue;
+}
+
 bool VM::isFalsey(Value value) const
 {
     return IS_NIL(value) || (IS_BOOL(value) && !AS_BOOL(value));
@@ -293,12 +374,12 @@ Value VM::peek(int distance) const
     return stackTop_[-1 - distance];
 }
 
-bool VM::call(ObjFunction *function, int argCount)
+bool VM::call(ObjClosure *closure, int argCount)
 {
-    if (argCount != function->arity)
+    if (argCount != closure->function->arity)
     {
-        runtimeError("Expected %d arguments but got %d.", function->arity,
-                     argCount);
+        runtimeError("Expected %d arguments but got %d.",
+                     closure->function->arity, argCount);
         return false;
     }
     if (frameCount_ == FRAMES_MAX)
@@ -308,8 +389,8 @@ bool VM::call(ObjFunction *function, int argCount)
     }
 
     CallFrame *frame = &frames_[frameCount_++];
-    frame->function = function;
-    frame->ip = function->chunk.code();
+    frame->closure = closure;
+    frame->ip = closure->function->chunk.code();
 
     frame->slots = stackTop_ - argCount - 1;
     return true;
@@ -321,7 +402,7 @@ bool VM::callValue(Value callee, int argCount)
     {
         switch (OBJ_TYPE(callee))
         {
-            case OBJ_FUNCTION: return call(AS_FUNCTION(callee), argCount);
+            case OBJ_CLOSURE: return call(AS_CLOSURE(callee), argCount);
             case OBJ_NATIVE:
             {
                 NativeFn native = AS_NATIVE(callee);
@@ -362,14 +443,14 @@ void VM::runtimeError(const char *format, ...)
     fputs("\n", stderr);
 
     CallFrame *frame = &frames_[frameCount_ - 1];
-    size_t instruction = frame->ip - frame->function->chunk.code() - 1;
-    int line = frame->function->chunk.lines()[instruction];
+    size_t instruction = frame->ip - frame->closure->function->chunk.code() - 1;
+    int line = frame->closure->function->chunk.lines()[instruction];
     fprintf(stderr, "[line %d] in script\n", line);
 
     for (int i = frameCount_ - 1; i >= 0; i--)
     {
         CallFrame *frame = &frames_[i];
-        ObjFunction *function = frame->function;
+        ObjFunction *function = frame->closure->function;
         // -1 because the IP is sitting on the next instruction to be
         // executed.
         size_t instruction = frame->ip - function->chunk.code() - 1;

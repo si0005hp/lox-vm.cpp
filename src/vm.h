@@ -20,7 +20,7 @@ typedef enum
 
 struct CallFrame
 {
-    ObjFunction *function;
+    ObjClosure *closure;
     uint8_t *ip;
     Value *slots;
 };
@@ -40,7 +40,9 @@ class VM
     Value peek(int distance) const;
     void concatenate();
     bool callValue(Value callee, int argCount);
-    bool call(ObjFunction *function, int argCount);
+    bool call(ObjClosure *closure, int argCount);
+    ObjUpvalue *captureUpvalue(Value *local);
+    void closeUpvalues(Value *last);
 
     void runtimeError(const char *format, ...);
     void defineNative(const char *name, NativeFn function);
@@ -60,6 +62,7 @@ class VM
     Table globals_; // global variables
 
     Obj *objects_;
+    ObjUpvalue *openUpvalues_;
 };
 
 inline VM vm;

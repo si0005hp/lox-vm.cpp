@@ -25,9 +25,11 @@ namespace lox
 typedef struct Obj Obj;
 typedef struct ObjString ObjString;
 typedef struct ObjFunction ObjFunction;
+typedef struct ObjClosure ObjClosure;
 // struct Obj;
 // struct ObjString;
 // struct ObjFunction;
+// struct ObjClosure;
 
 typedef enum
 {

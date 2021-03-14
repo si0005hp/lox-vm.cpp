@@ -39,6 +39,13 @@ struct Local
 {
     Token name;
     int depth;
+    bool isCaptured;
+};
+
+struct Upvalue
+{
+    uint8_t index;
+    bool isLocal;
 };
 
 typedef enum
@@ -56,6 +63,8 @@ class Compiler
     void beginScope();
     void endScope();
     int resolveLocal(const Token& name);
+    int resolveUpvalue(const Token& name);
+    int addUpvalue(uint8_t index, bool isLocal);
 
     /* fields */
     struct Compiler* enclosing_;
@@ -66,6 +75,7 @@ class Compiler
     Local locals_[UINT8_COUNT];
     int localCount_;
     int scopeDepth_;
+    Upvalue upvalues_[UINT8_COUNT];
 };
 
 ObjFunction* compile(const char* source);
