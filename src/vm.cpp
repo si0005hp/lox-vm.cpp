@@ -19,15 +19,15 @@ static Value clockNative(int argCount, Value *args)
 {
     return NUMBER_VAL((double)clock() / CLOCKS_PER_SEC);
 }
-// static Value getEnvNative(int argCount, Value *args)
-// {
-//     ObjString *envKey = AS_STRING(args[0]);
+static Value getEnvNative(int argCount, Value *args)
+{
+    ObjString *envKey = AS_STRING(args[0]);
 
-//     char *envVal = std::getenv(envKey->chars);
-//     ObjString *result = takeString(envVal, strlen(envVal));
+    char *envVal = std::getenv(envKey->chars);
+    ObjString *result = takeString(envVal, strlen(envVal));
 
-//     return OBJ_VAL(result);
-// }
+    return OBJ_VAL(result);
+}
 static Value sumNative(int argCount, Value *args)
 {
     double a = AS_NUMBER(args[0]);
@@ -42,11 +42,11 @@ static Value helloworldNative(int argCount, Value *args)
 
 VM::VM() : stackTop_(stack_), objects_(NULL), openUpvalues_(NULL)
 {
-    strings_.init();
-    globals_.init();
+    initTable(&globals_);
+    initTable(&strings_);
 
     defineNative("clock", clockNative);
-    // defineNative("getEnv", getEnvNative);
+    defineNative("getEnv", getEnvNative);
     defineNative("sum", sumNative);
     defineNative("helloworld", helloworldNative);
 }
@@ -74,8 +74,8 @@ InterpretResult VM::interpret(const char *source)
 
 void VM::free()
 {
-    strings_.free();
-    globals_.free();
+    freeTable(&globals_);
+    freeTable(&strings_);
     freeObjects();
 }
 
@@ -184,7 +184,7 @@ InterpretResult VM::run()
             {
                 ObjString *name = READ_STRING();
                 Value value;
-                if (!globals_.get(name, &value))
+                if (!tableGet(&globals_, name, &value))
                 {
                     runtimeError("Undefined variable '%s'.", name->chars);
                     return INTERPRET_RUNTIME_ERROR;
@@ -195,9 +195,9 @@ InterpretResult VM::run()
             case OP_SET_GLOBAL:
             {
                 ObjString *name = READ_STRING();
-                if (vm.globals_.set(name, peek(0)))
+                if (tableSet(&globals_, name, peek(0)))
                 {
-                    vm.globals_.delete_(name);
+                    tableDelete(&globals_, name); // [delete]
                     runtimeError("Undefined variable '%s'.", name->chars);
                     return INTERPRET_RUNTIME_ERROR;
                 }
@@ -219,7 +219,7 @@ InterpretResult VM::run()
             case OP_DEFINE_GLOBAL:
             {
                 ObjString *name = READ_STRING();
-                globals_.set(name, peek(0));
+                tableSet(&globals_, name, peek(0));
                 pop();
                 break;
             }
@@ -470,7 +470,7 @@ void VM::defineNative(const char *name, NativeFn function)
     // with these so that it doesn’t free them out.
     push(OBJ_VAL(copyString(name, (int)strlen(name))));
     push(OBJ_VAL(newNative(function)));
-    globals_.set(AS_STRING(stack_[0]), stack_[1]);
+    tableSet(&globals_, AS_STRING(stack_[0]), stack_[1]);
     pop();
     pop();
 }
