@@ -48,10 +48,15 @@ class VM
     void defineNative(const char *name, NativeFn function);
 
     Obj *objects() const { return objects_; }
-    void setObjects(Obj *objects) { objects = objects_; }
     Table *strings() { return &strings_; }
+    Table *globals() { return &globals_; }
+    Value *stack() { return stack_; }
+    Value *stackTop() { return stackTop_; }
+    int frameCount() { return frameCount_; }
+    CallFrame *frames() { return frames_; }
+    ObjUpvalue *openUpvalues() { return openUpvalues_; }
 
-  private:
+    // private:
     InterpretResult run();
 
     CallFrame frames_[FRAMES_MAX];
@@ -63,6 +68,13 @@ class VM
 
     Obj *objects_;
     ObjUpvalue *openUpvalues_;
+
+    int grayCount_;
+    int grayCapacity_;
+    Obj **grayStack_;
+
+    size_t bytesAllocated_;
+    size_t nextGC_;
 };
 
 inline VM vm;

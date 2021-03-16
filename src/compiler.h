@@ -4,7 +4,6 @@
 
 #include "chunk.h"
 #include "common.h"
-#include "compiler.h"
 #include "scanner.h"
 #include "value.h"
 
@@ -79,6 +78,7 @@ class Compiler
 };
 
 ObjFunction* compile(const char* source);
+void markCompilerRoots();
 
 class Parser
 {

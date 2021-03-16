@@ -2,6 +2,7 @@
 
 #include "memory.h"
 #include "value.h"
+#include "vm.h"
 
 namespace lox
 {
@@ -40,7 +41,9 @@ void Chunk::write(uint8_t byte, int line)
 
 int Chunk::addConstant(Value value)
 {
+    vm.push(value); // For GC
     constants_.write(value);
+    vm.pop();
     return constants_.count() - 1;
 }
 

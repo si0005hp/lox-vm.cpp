@@ -1,6 +1,7 @@
 #pragma once
 
 #include "common.h"
+#include "object.h"
 
 #define GROW_CAPACITY(capacity) ((capacity) < 8 ? 8 : (capacity)*2)
 
@@ -20,5 +21,9 @@ namespace lox
 
 void* reallocate(void* pointer, size_t oldSize, size_t newSize);
 void freeObjects();
+
+void collectGarbage();
+void markObject(Obj* object);
+void markValue(Value value);
 
 } // namespace lox

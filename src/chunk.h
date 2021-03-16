@@ -1,6 +1,5 @@
 #pragma once
 
-#include "array.h"
 #include "common.h"
 #include "value.h"
 
@@ -56,6 +55,7 @@ class Chunk
     const int* lines() const { return lines_; };
 
     const ValueArray& constants() const { return constants_; }
+    ValueArray* constantsPtr() { return &constants_; }
 
   private:
     int count_;

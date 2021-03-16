@@ -8,6 +8,7 @@
 
 #include "compiler.h"
 #include "debug.h"
+#include "memory.h"
 #include "object.h"
 #include "value.h"
 
@@ -40,7 +41,16 @@ static Value helloworldNative(int argCount, Value *args)
     return OBJ_VAL(takeString((char *)"Hello world!", 13));
 }
 
-VM::VM() : stackTop_(stack_), objects_(NULL), openUpvalues_(NULL)
+VM::VM()
+  : frameCount_(0),
+    stackTop_(stack_),
+    objects_(NULL),
+    openUpvalues_(NULL),
+    grayCount_(0),
+    grayCapacity_(0),
+    grayStack_(NULL),
+    bytesAllocated_(0),
+    nextGC_(1024 * 1024)
 {
     initTable(&globals_);
     initTable(&strings_);
@@ -421,8 +431,10 @@ bool VM::callValue(Value callee, int argCount)
 
 void VM::concatenate()
 {
-    ObjString *b = AS_STRING(pop());
-    ObjString *a = AS_STRING(pop());
+    // ObjString *b = AS_STRING(pop());
+    // ObjString *a = AS_STRING(pop());
+    ObjString *b = AS_STRING(peek(0)); // For GC
+    ObjString *a = AS_STRING(peek(1));
 
     int length = a->length + b->length;
     char *chars = ALLOCATE(char, length + 1);
@@ -431,6 +443,9 @@ void VM::concatenate()
     chars[length] = '\0';
 
     ObjString *result = takeString(chars, length);
+    pop();
+    pop();
+
     push(OBJ_VAL(result));
 }
 

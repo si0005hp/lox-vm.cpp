@@ -36,4 +36,30 @@ void printValue(Value value)
     }
 }
 
+void ValueArray::init()
+{
+    count_ = 0;
+    capacity_ = 0;
+    elems_ = NULL;
+}
+
+void ValueArray::write(Value elem)
+{
+    if (capacity_ < count_ + 1)
+    {
+        int oldCapacity = capacity_;
+        capacity_ = GROW_CAPACITY(oldCapacity);
+        elems_ = GROW_ARRAY(Value, elems_, oldCapacity, capacity_);
+    }
+
+    elems_[count_] = elem;
+    count_++;
+}
+
+void ValueArray::free()
+{
+    FREE_ARRAY(Value, elems_, capacity_);
+    init();
+}
+
 } // namespace lox

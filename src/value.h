@@ -2,7 +2,6 @@
 
 #include <iostream>
 
-#include "array.h"
 #include "common.h"
 
 #define IS_BOOL(value) ((value).type == VAL_BOOL)
@@ -50,8 +49,24 @@ typedef struct
     } as;
 } Value;
 
-class ValueArray : public Array<Value>
+class ValueArray
 {
+  public:
+    ValueArray() : count_(0), capacity_(0), elems_(NULL) {}
+    ~ValueArray() {}
+
+    void init();
+    void write(Value elem);
+    void free();
+
+    int count() const { return count_; };
+    int capacity() const { return capacity_; };
+    const Value* elems() const { return elems_; };
+
+  private:
+    int count_;
+    int capacity_;
+    Value* elems_;
 };
 
 bool valuesEqual(Value a, Value b);
