@@ -43,6 +43,10 @@ class VM
     bool call(ObjClosure *closure, int argCount);
     ObjUpvalue *captureUpvalue(Value *local);
     void closeUpvalues(Value *last);
+    void defineMethod(ObjString *name);
+    bool bindMethod(ObjClass *klass, ObjString *name);
+    bool invoke(ObjString *name, int argCount);
+    bool invokeFromClass(ObjClass *klass, ObjString *name, int argCount);
 
     void runtimeError(const char *format, ...);
     void defineNative(const char *name, NativeFn function);
@@ -68,6 +72,7 @@ class VM
 
     Obj *objects_;
     ObjUpvalue *openUpvalues_;
+    ObjString *initString_;
 
     int grayCount_;
     int grayCapacity_;

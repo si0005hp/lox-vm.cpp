@@ -46,6 +46,7 @@ VM::VM()
     stackTop_(stack_),
     objects_(NULL),
     openUpvalues_(NULL),
+    initString_(NULL), // For GC, first need to NULL
     grayCount_(0),
     grayCapacity_(0),
     grayStack_(NULL),
@@ -54,6 +55,7 @@ VM::VM()
 {
     initTable(&globals_);
     initTable(&strings_);
+    initString_ = copyString("init", 4);
 
     defineNative("clock", clockNative);
     defineNative("getEnv", getEnvNative);
@@ -86,6 +88,7 @@ void VM::free()
 {
     freeTable(&globals_);
     freeTable(&strings_);
+    initString_ = NULL;
     freeObjects();
 }
 
@@ -318,8 +321,9 @@ InterpretResult VM::run()
                     break;
                 }
 
-                runtimeError("Undefined property '%s'.", name->chars);
-                return INTERPRET_RUNTIME_ERROR;
+                if (!bindMethod(instance->klass, name))
+                    return INTERPRET_RUNTIME_ERROR;
+                break;
             }
             case OP_SET_PROPERTY:
             {
@@ -335,6 +339,19 @@ InterpretResult VM::run()
                 Value value = pop();
                 pop();
                 push(value);
+                break;
+            }
+            case OP_METHOD: defineMethod(READ_STRING()); break;
+
+            case OP_INVOKE:
+            {
+                ObjString *method = READ_STRING();
+                int argCount = READ_BYTE();
+                if (!invoke(method, argCount))
+                {
+                    return INTERPRET_RUNTIME_ERROR;
+                }
+                frame = &vm.frames()[vm.frameCount_ - 1];
                 break;
             }
 
@@ -367,6 +384,61 @@ InterpretResult VM::run()
 #undef READ_CONSTANT
 #undef BINARY_OP
 #undef READ_STRING
+}
+
+bool VM::invokeFromClass(ObjClass *klass, ObjString *name, int argCount)
+{
+    Value method;
+    if (!tableGet(&klass->methods, name, &method))
+    {
+        runtimeError("Undefined property '%s'.", name->chars);
+        return false;
+    }
+    return call(AS_CLOSURE(method), argCount);
+}
+
+bool VM::invoke(ObjString *name, int argCount)
+{
+    Value receiver = peek(argCount);
+    if (!IS_INSTANCE(receiver))
+    {
+        runtimeError("Only instances have methods.");
+        return false;
+    }
+
+    ObjInstance *instance = AS_INSTANCE(receiver);
+
+    Value value;
+    if (tableGet(&instance->fields, name, &value))
+    {
+        vm.stackTop_[-argCount - 1] = value;
+        return callValue(value, argCount);
+    }
+
+    return invokeFromClass(instance->klass, name, argCount);
+}
+
+bool VM::bindMethod(ObjClass *klass, ObjString *name)
+{
+    Value method;
+    if (!tableGet(&klass->methods, name, &method))
+    {
+        runtimeError("Undefined property '%s'.", name->chars);
+        return false;
+    }
+
+    ObjBoundMethod *bound = newBoundMethod(peek(0), AS_CLOSURE(method));
+    pop();
+    push(OBJ_VAL(bound));
+    return true;
+}
+
+void VM::defineMethod(ObjString *name)
+{
+    Value method = peek(0);
+    ObjClass *klass = AS_CLASS(peek(1));
+    tableSet(&klass->methods, name, method);
+    pop();
 }
 
 void VM::closeUpvalues(Value *last)
@@ -466,7 +538,23 @@ bool VM::callValue(Value callee, int argCount)
             {
                 ObjClass *klass = AS_CLASS(callee);
                 vm.stackTop_[-argCount - 1] = OBJ_VAL(newInstance(klass));
+                Value initializer;
+                if (tableGet(&klass->methods, vm.initString_, &initializer))
+                {
+                    return call(AS_CLOSURE(initializer), argCount);
+                }
+                else if (argCount != 0)
+                {
+                    runtimeError("Expected 0 arguments but got %d.", argCount);
+                    return false;
+                }
                 return true;
+            }
+            case OBJ_BOUND_METHOD:
+            {
+                ObjBoundMethod *bound = AS_BOUND_METHOD(callee);
+                vm.stackTop_[-argCount - 1] = bound->receiver;
+                return call(bound->method, argCount);
             }
             default: break; // Non-callable object type.
         }

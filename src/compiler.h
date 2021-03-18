@@ -50,7 +50,9 @@ struct Upvalue
 typedef enum
 {
     TYPE_FUNCTION,
-    TYPE_SCRIPT
+    TYPE_SCRIPT,
+    TYPE_METHOD,
+    TYPE_INITIALIZER,
 } FunctionType;
 
 class Compiler
@@ -75,6 +77,13 @@ class Compiler
     int localCount_;
     int scopeDepth_;
     Upvalue upvalues_[UINT8_COUNT];
+};
+
+class ClassCompiler
+{
+  public:
+    struct ClassCompiler* enclosing;
+    Token name;
 };
 
 ObjFunction* compile(const char* source);
