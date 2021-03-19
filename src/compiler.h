@@ -84,6 +84,7 @@ class ClassCompiler
   public:
     struct ClassCompiler* enclosing;
     Token name;
+    bool hasSuperclass;
 };
 
 ObjFunction* compile(const char* source);
