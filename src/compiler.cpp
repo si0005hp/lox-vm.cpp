@@ -868,7 +868,7 @@ static void statement()
         returnStatement();
     else if (parser.match(TOKEN_WHILE))
         whileStatement();
-    else if (parser.match(TOKEN_PRINT))
+    else if (parser.match(TOKEN_LEFT_BRACE))
     {
         current->beginScope();
         block();
